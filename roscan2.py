@@ -44,6 +44,7 @@ ENCODER_CPR = 16384
 
 MOTOR_SPEED = 1000   # RPM
 MOTOR_ACC   = 20     # 0-255
+TIME = 7
 
 # How long (seconds) with no new joint state before we consider the
 # trajectory settled and send the accumulated delta as one command.
@@ -111,8 +112,8 @@ def send_f4(joint_idx, delta_rad):
     if rel_axis == 0:
         return False
 
-    speed_hi    = (MOTOR_SPEED >> 8) & 0xFF
-    speed_lo    =  MOTOR_SPEED       & 0xFF
+    speed_hi    = (int((rel_axis/TIME)) >> 8) & 0xFF
+    speed_lo    = int(rel_axis/TIME) & 0xFF
     rel_24      = rel_axis & 0xFFFFFF
     axis_b0     = (rel_24 >> 16) & 0xFF
     axis_b1     = (rel_24 >>  8) & 0xFF
