@@ -17,6 +17,7 @@ import rospy
 import moveit_commander
 import moveit_msgs.msg
 import geometry_msgs.msg
+import numpy as np
 from math import pi
 
 
@@ -64,6 +65,11 @@ RETURN_HOME = True
 # ─────────────────────────────────────────────
 #  MAIN
 # ─────────────────────────────────────────────
+
+def calc_dist(WAYPOINTS):
+    distances = [np.sqrt(p[0]**2 + p[1]**2 + p[2]**2) for p in WAYPOINTS]
+    return distances
+
 
 def make_pose(x, y, z, qx, qy, qz, qw):
     pose = geometry_msgs.msg.Pose()
