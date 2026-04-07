@@ -29,6 +29,7 @@ from math import pi
 # Start low (0.1) until you've verified the path is safe
 VELOCITY_SCALING     = 0.1
 ACCELERATION_SCALING = 0.1
+LINEAR_SPEED = 0.1
 
 # Cartesian path resolution in meters — smaller = smoother but slower to plan
 CARTESIAN_STEP = 0.01
@@ -67,8 +68,21 @@ RETURN_HOME = True
 # ─────────────────────────────────────────────
 
 def calc_dist(WAYPOINTS):
-    distances = [np.sqrt(p[0]**2 + p[1]**2 + p[2]**2) for p in WAYPOINTS]
+    #calculates distances bewteen each cartesian point in WAYPOINTS assuming there is at least one point in the list
+    distances = []
+    distances.append(np.sqrt(WAYPOINTS[0][0]**2 + WAYPOINTS[0][1]**2 + WAYPOINTS[0][2]**2)
+    for i in range(len(WAYPOINTS) - 1):
+        temp_dist = np.sqrt((WAYPOINTS[i + 1][0] - WAYPOINTS[i][0])**2
+                            + (WAYPOINTS[i + 1][1] - WAYPOINTS[i][1])**2
+                            + (WAYPOINTS[i + 1][2] - WAYPOINTS[i][2])**2)
+        distances.append(temp_dist)
     return distances
+
+def calc_time(WAYPOINTS):
+    #calculates the time for the arm to travel the linear distance in minutes
+    time_delta = [distance / LINEAR_SPEED / 60 for distance in calc_dist(WAYPOINTS)]
+    return time_delta
+    
 
 
 def make_pose(x, y, z, qx, qy, qz, qw):
