@@ -44,7 +44,7 @@ ENCODER_CPR = 16384
 
 MOTOR_SPEED = 1000   # RPM
 MOTOR_ACC   = 20     # 0-255
-TIME = 0.1
+TIME = 0.05
 
 # How long (seconds) with no new joint state before we consider the
 # trajectory settled and send the accumulated delta as one command.
