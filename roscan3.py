@@ -340,66 +340,61 @@ class TrajectoryActionServer:
             f"duration {points[-1].time_from_start.to_sec():.2f}s"
         )
 
-        streaming_active = True
-        rate = rospy.Rate(STREAM_RATE_HZ)
-        start_time = rospy.Time.now()
-        point_idx = 0
+streaming_active = True
+start_time = rospy.Time.now()
 
-        try:
-            while not rospy.is_shutdown():
-                if self._server.is_preempt_requested():
-                    rospy.logwarn("[F5] Trajectory preempted.")
-                    self._server.set_preempted()
-                    return
+LAG_WARN_SEC  = 0.05   # 50ms  — log a warning
+LAG_ABORT_SEC = 0.10   # 100ms — stop the arm and abort
 
-                elapsed = (rospy.Time.now() - start_time).to_sec()
+try:
+    for i, pt in enumerate(points):
+        if self._server.is_preempt_requested():
+            rospy.logwarn("[F5] Trajectory preempted.")
+            self._server.set_preempted()
+            return
 
-                # Advance to the trajectory point whose timestamp we've reached
-                while (point_idx < len(points) - 1 and
-                       points[point_idx + 1].time_from_start.to_sec() <= elapsed):
-                    point_idx += 1
+        # ── Option 2: measure how far behind schedule we are ──
+        elapsed  = (rospy.Time.now() - start_time).to_sec()
+        expected = pt.time_from_start.to_sec()
+        lag      = elapsed - expected
 
-                # Interpolate between current and next point
-                pt = points[point_idx]
-                if point_idx < len(points) - 1:
-                    pt_next = points[point_idx + 1]
-                    t0 = pt.time_from_start.to_sec()
-                    t1 = pt_next.time_from_start.to_sec()
-                    dt = t1 - t0
-                    if dt > 0:
-                        alpha = min(1.0, max(0.0, (elapsed - t0) / dt))
-                    else:
-                        alpha = 1.0
+        if lag > LAG_WARN_SEC:
+            rospy.logwarn(
+                f"[F5] Running {lag*1000:.1f}ms behind at point {i}/{len(points)}"
+            )
 
-                    interp_positions = [
-                        pt.positions[i] + alpha * (pt_next.positions[i] - pt.positions[i])
-                        for i in range(len(pt.positions))
-                    ]
-                else:
-                    interp_positions = list(pt.positions)
-                    if elapsed >= pt.time_from_start.to_sec():
-                        # Past the final point, send it and exit
-                        self._send_joint_positions(interp_positions, joint_indices)
-                        break
-
-                self._send_joint_positions(interp_positions, joint_indices)
-                rate.sleep()
-
-            # Send final point one more time to be sure
-            final_pt = points[-1]
-            self._send_joint_positions(list(final_pt.positions), joint_indices)
-
-            # Brief wait for motors to settle at final position
-            rospy.sleep(0.3)
-
-            rospy.loginfo("[F5] Trajectory execution complete.")
-            self._server.set_succeeded(FollowJointTrajectoryResult())
-
-        except Exception as e:
-            rospy.logerr(f"[F5] Trajectory execution error: {e}")
+        # ── Option 3: abort if lag is unrecoverable ────────────
+        if lag > LAG_ABORT_SEC:
+            rospy.logerr(
+                f"[F5] Lag {lag*1000:.1f}ms exceeds limit. Stopping arm."
+            )
+            # Hold each motor at its current position
+            for motor_idx in range(6):
+                send_f5(motor_idx, abs_positions[motor_idx], speed=0)
+            rospy.sleep(0.1)
             self._server.set_aborted(FollowJointTrajectoryResult())
-        finally:
-            streaming_active = False
+            return
+
+        # ── Send this point ────────────────────────────────────
+        self._send_joint_positions(list(pt.positions), joint_indices)
+
+        # ── Sleep until next point, adjusted for lag ───────────
+        if i < len(points) - 1:
+            dt        = (points[i + 1].time_from_start - pt.time_from_start).to_sec()
+            actual_dt = dt - max(0.0, lag)
+            if actual_dt > 0:
+                rospy.sleep(actual_dt)
+
+    # All points sent successfully
+    rospy.sleep(0.3)
+    rospy.loginfo("[F5] Trajectory execution complete.")
+    self._server.set_succeeded(FollowJointTrajectoryResult())
+
+except Exception as e:
+    rospy.logerr(f"[F5] Trajectory execution error: {e}")
+    self._server.set_aborted(FollowJointTrajectoryResult())
+finally:
+    streaming_active = False
 
     def _send_joint_positions(self, positions, joint_indices):
         """
